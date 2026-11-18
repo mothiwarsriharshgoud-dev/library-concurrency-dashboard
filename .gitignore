@@ -1,6 +1,9 @@
 node_modules/
 package-lock.json
 *.pptx
+*.pdf
 generate_ppt.js
+generate_pdf.js
+print_slides.html
 package.json
 presentation.html
