@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Library Dual-User Synchronization Dashboard</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.85; transform: scale(0.98); }
+    }
+    @keyframes glow-red {
+      0%, 100% { box-shadow: 0 0 18px rgba(239, 68, 68, 0.45); }
+      50% { box-shadow: 0 0 28px rgba(239, 68, 68, 0.85); }
+    }
+    @keyframes glow-green {
+      0%, 100% { box-shadow: 0 0 18px rgba(16, 185, 129, 0.45); }
+      50% { box-shadow: 0 0 28px rgba(16, 185, 129, 0.85); }
+    }
+    .race-alert {
+      animation: glow-red 1.2s infinite ease-in-out;
+    }
+    .safe-glow {
+      animation: glow-green 1.5s infinite ease-in-out;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.1);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(150,150,150,0.3);
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased flex flex-col selection:bg-cyan-500 selection:text-white">
+
+  <!-- Top Header & Global Library Status -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-indigo-500/20 text-xl">
+          📖
+        </div>
+        <div>
+          <h1 class="font-bold text-lg md:text-xl text-white tracking-tight">Library Dual-User Concurrency Simulator</h1>
+        </div>
+      </div>
+
+      <!-- Controls & Mutex Mode Switcher -->
+      <div class="flex items-center flex-wrap gap-3">
+        
+        <!-- Mode Switcher -->
+        <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+          <button id="mode-mutex-btn" onclick="setMode(true)" class="px-3 py-1.5 rounded-lg font-semibold transition-all bg-emerald-600 text-white shadow flex items-center gap-1.5">
+            <span>🛡️ Mutex Protected (Safe)</span>
+          </button>
+          <button id="mode-unsafe-btn" onclick="setMode(false)" class="px-3 py-1.5 rounded-lg font-semibold transition-all text-slate-400 hover:text-white flex items-center gap-1.5">
+            <span>⚠️ Unsafe (Race Hazard)</span>
+          </button>
+        </div>
+
+        <!-- Delay Slider -->
+        <div class="hidden sm:flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
+          <span class="text-slate-400">Delay:</span>
+          <input type="range" id="sim-delay" min="0.3" max="2.0" step="0.1" value="0.8" oninput="document.getElementById('delay-val').innerText = this.value + 's'" class="w-20 h-1.5 bg-slate-800 rounded-lg cursor-pointer accent-cyan-500">
+          <span id="delay-val" class="text-cyan-400 font-mono w-8">0.8s</span>
+        </div>
+
+        <!-- Reset Button -->
+        <button onclick="resetLibrary()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700" title="Reset Catalog & Selections">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </button>
+
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Central Chamber / Lock Indicator Banner -->
+  <div class="bg-slate-900 border-b border-slate-800 px-6 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4 text-xs">
+      
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span class="text-slate-400">Central Mutex Lock:</span>
+          <span id="lock-state-badge" class="px-2.5 py-0.5 rounded-full font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>UNLOCKED</span>
+          </span>
+        </div>
+        <div class="hidden md:flex items-center gap-1.5 text-slate-400">
+          <span>Lock Owner:</span>
+          <span id="lock-owner-text" class="font-mono text-slate-200">None</span>
+        </div>
+      </div>
+
+      <!-- Action Trigger: Run Simulation -->
+      <div class="flex items-center gap-3">
+        <span id="sim-prompt-text" class="text-amber-400 font-medium animate-pulse">
+          👉 Both users must select a book below to begin checkout simulation!
+        </span>
+        <button id="btn-run-simulation" onclick="startDualCheckoutSimulation()" disabled class="px-5 py-2 rounded-xl font-bold text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 transition-all flex items-center gap-2 shadow-lg">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span>Run Dual Checkout Simulation</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Main Split Dashboard -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+
+    <!-- Race Condition / Success Floating Banner -->
+    <div id="alert-banner-race" class="hidden rounded-2xl p-4 border border-rose-600/70 bg-rose-950/60 text-rose-200 race-alert flex items-start gap-4">
+      <div class="text-3xl flex-shrink-0 mt-0.5">💥</div>
+      <div class="space-y-1">
+        <h4 class="font-bold text-sm text-white flex items-center gap-2">
+          <span>RACE CONDITION DETECTED! (DUPLICATE BOOK ISSUE)</span>
+          <span class="text-[10px] bg-rose-900 px-2 py-0.5 rounded text-rose-200 font-mono">Unsafe Execution</span>
+        </h4>
+        <p class="text-xs text-rose-200 leading-relaxed">
+          Both <strong>User 1 (Alice)</strong> and <strong>User 2 (Bob)</strong> requested the same book (<span id="race-book-name" class="font-bold text-white underline"></span>) which had only <strong>1 physical copy available</strong>! Because no Mutex lock protected the check-and-decrement operation, both threads inspected the catalog at the same time, saw <code>available_copies = 1</code>, and both checked it out! The library system has duplicate borrowers for the single copy.
+        </p>
+      </div>
+    </div>
+
+    <div id="alert-banner-safe" class="hidden rounded-2xl p-4 border border-emerald-600/70 bg-emerald-950/60 text-emerald-200 safe-glow flex items-start gap-4">
+      <div class="text-3xl flex-shrink-0 mt-0.5">🛡️</div>
+      <div class="space-y-1">
+        <h4 class="font-bold text-sm text-white flex items-center gap-2">
+          <span>MUTEX SYNCHRONIZATION SUCCESSFUL! (MUTUAL EXCLUSION ENFORCED)</span>
+          <span class="text-[10px] bg-emerald-900 px-2 py-0.5 rounded text-emerald-200 font-mono">threading.Lock() Active</span>
+        </h4>
+        <p class="text-xs text-emerald-200 leading-relaxed">
+          The Mutex lock guaranteed that only one user thread entered the critical section. <strong id="safe-winner-name">User 1</strong> acquired the lock first and successfully checked out the book. The other user was blocked until the lock was released, saw <code>available_copies = 0</code>, and was safely notified that no copies remain. Duplicate issue was prevented!
+        </p>
+      </div>
+    </div>
+
+    <!-- The 2-Sided Workspace Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- ================= LEFT SIDE: USER 1 (ALICE) ================= -->
+      <section class="bg-slate-900/80 border border-indigo-500/30 rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-5 relative">
+        <div class="space-y-4">
+          
+          <!-- User 1 Header -->
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/40 flex items-center justify-center font-bold text-base shadow">
+                U1
+              </div>
+              <div>
+                <h3 class="font-bold text-white text-base flex items-center gap-2">
+                  <span>User 1 (Alice)</span>
+                  <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">Thread-1</span>
+                </h3>
+                <p class="text-xs text-slate-400">Search &amp; Request</p>
+              </div>
+            </div>
+            <span id="u1-status-pill" class="text-xs font-bold px-3 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+              SEARCHING BOOK
+            </span>
+          </div>
+
+          <!-- User 1 Book Search Bar -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">🔍 Search Library Catalog (User 1):</label>
+            <div class="relative">
+              <input type="text" id="u1-search-input" placeholder="Type book name (e.g. Operating Systems, Networks)..." oninput="filterBooks('u1')" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors">
+              <span class="absolute right-3 top-2.5 text-slate-500 text-xs">Press to filter</span>
+            </div>
+          </div>
+
+          <!-- User 1 Catalog Grid Selection -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-slate-400">Available Library Books:</span>
+              <span class="text-[11px] text-amber-400">⚡ 1 Copy Left (High Contention)</span>
+            </div>
+            <div id="u1-catalog-list" class="max-h-44 overflow-y-auto custom-scroll space-y-1.5 pr-1">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+
+          <!-- User 1 Selected Book Display Card -->
+          <div id="u1-selected-card" class="bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-3.5 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] uppercase font-bold tracking-wider text-indigo-400">Selected Book to Borrow:</span>
+              <span id="u1-selection-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">No Book Selected</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div id="u1-book-cover" class="w-10 h-12 rounded bg-slate-800 flex items-center justify-center text-xl flex-shrink-0">
+                📚
+              </div>
+              <div class="overflow-hidden">
+                <h4 id="u1-book-title" class="font-bold text-sm text-white truncate">Please select a book from above</h4>
+                <p id="u1-book-meta" class="text-xs text-slate-400">Author: - &bull; Available: -</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- User 1 Real-time Thread Execution Pipeline -->
+          <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 space-y-2.5 text-xs font-mono">
+            <div class="flex items-center justify-between text-slate-400 pb-1.5 border-b border-slate-800/80">
+              <span class="font-semibold text-slate-300">Thread Execution Pipeline</span>
+              <span id="u1-pipe-lock" class="text-[11px] text-slate-500">Lock: Idle</span>
+            </div>
+            <div class="space-y-1">
+              <div class="flex justify-between"><span>Step:</span> <span id="u1-pipe-step" class="text-indigo-400 font-bold">Select book above</span></div>
+              <div class="flex justify-between"><span>Observed Copies:</span> <span id="u1-pipe-obs" class="text-slate-300">-</span></div>
+              <div class="flex justify-between"><span>Checkout Outcome:</span> <span id="u1-pipe-res" class="text-slate-400">Pending</span></div>
+            </div>
+            <div class="w-full bg-slate-900 h-2 rounded-full overflow-hidden mt-1">
+              <div id="u1-progress" class="bg-indigo-500 h-full w-0 transition-all duration-300"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="pt-2">
+          <button id="u1-confirm-btn" onclick="confirmUserSelection('u1')" disabled class="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 transition-colors flex items-center justify-center gap-2">
+            <span>Confirm User 1 Book Choice</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ================= RIGHT SIDE: USER 2 (BOB) ================= -->
+      <section class="bg-slate-900/80 border border-rose-500/30 rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-5 relative">
+        <div class="space-y-4">
+          
+          <!-- User 2 Header -->
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-rose-600/20 text-rose-400 border border-rose-500/40 flex items-center justify-center font-bold text-base shadow">
+                U2
+              </div>
+              <div>
+                <h3 class="font-bold text-white text-base flex items-center gap-2">
+                  <span>User 2 (Bob)</span>
+                  <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800">Thread-2</span>
+                </h3>
+                <p class="text-xs text-slate-400">Search &amp; Request</p>
+              </div>
+            </div>
+            <span id="u2-status-pill" class="text-xs font-bold px-3 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+              SEARCHING BOOK
+            </span>
+          </div>
+
+          <!-- User 2 Book Search Bar -->
+          <div class="space-y-1.5">
+            <label class="block text-xs font-semibold text-slate-300">🔍 Search Library Catalog (User 2):</label>
+            <div class="relative">
+              <input type="text" id="u2-search-input" placeholder="Type book name (e.g. Operating Systems, Networks)..." oninput="filterBooks('u2')" class="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition-colors">
+              <span class="absolute right-3 top-2.5 text-slate-500 text-xs">Press to filter</span>
+            </div>
+          </div>
+
+          <!-- User 2 Catalog Grid Selection -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-slate-400">Available Library Books:</span>
+              <span class="text-[11px] text-amber-400">⚡ 1 Copy Left (High Contention)</span>
+            </div>
+            <div id="u2-catalog-list" class="max-h-44 overflow-y-auto custom-scroll space-y-1.5 pr-1">
+              <!-- Dynamically rendered -->
+            </div>
+          </div>
+
+          <!-- User 2 Selected Book Display Card -->
+          <div id="u2-selected-card" class="bg-rose-950/20 border border-rose-500/30 rounded-xl p-3.5 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] uppercase font-bold tracking-wider text-rose-400">Selected Book to Borrow:</span>
+              <span id="u2-selection-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">No Book Selected</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div id="u2-book-cover" class="w-10 h-12 rounded bg-slate-800 flex items-center justify-center text-xl flex-shrink-0">
+                📚
+              </div>
+              <div class="overflow-hidden">
+                <h4 id="u2-book-title" class="font-bold text-sm text-white truncate">Please select a book from above</h4>
+                <p id="u2-book-meta" class="text-xs text-slate-400">Author: - &bull; Available: -</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- User 2 Real-time Thread Execution Pipeline -->
+          <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 space-y-2.5 text-xs font-mono">
+            <div class="flex items-center justify-between text-slate-400 pb-1.5 border-b border-slate-800/80">
+              <span class="font-semibold text-slate-300">Thread Execution Pipeline</span>
+              <span id="u2-pipe-lock" class="text-[11px] text-slate-500">Lock: Idle</span>
+            </div>
+            <div class="space-y-1">
+              <div class="flex justify-between"><span>Step:</span> <span id="u2-pipe-step" class="text-rose-400 font-bold">Select book above</span></div>
+              <div class="flex justify-between"><span>Observed Copies:</span> <span id="u2-pipe-obs" class="text-slate-300">-</span></div>
+              <div class="flex justify-between"><span>Checkout Outcome:</span> <span id="u2-pipe-res" class="text-slate-400">Pending</span></div>
+            </div>
+            <div class="w-full bg-slate-900 h-2 rounded-full overflow-hidden mt-1">
+              <div id="u2-progress" class="bg-rose-500 h-full w-0 transition-all duration-300"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="pt-2">
+          <button id="u2-confirm-btn" onclick="confirmUserSelection('u2')" disabled class="w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 transition-colors flex items-center justify-center gap-2">
+            <span>Confirm User 2 Book Choice</span>
+          </button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Central Critical Section & Live Audit Console -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Critical Section Code Walkthrough (5 cols) -->
+      <div class="lg:col-span-5 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-3 shadow-xl">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+          <h3 class="font-bold text-sm text-white flex items-center gap-2">
+            <span class="text-amber-400">⚡</span>
+            <span>Critical Section Synchronization Code</span>
+          </h3>
+          <span class="text-[11px] text-slate-400 font-mono">Python threading.Lock()</span>
+        </div>
+        
+        <pre class="bg-slate-950 p-3.5 rounded-xl font-mono text-xs text-slate-300 border border-slate-800 overflow-x-auto leading-relaxed custom-scroll">
+<span class="text-purple-400">def</span> <span class="text-blue-400">borrow_book</span>(user_name, book_id):
+    <span class="text-purple-400">global</span> catalog
+    
+    <span id="code-line-lock" class="text-slate-500 transition-colors"><span class="text-purple-400">with</span> library_lock: <span class="text-slate-600"># Acquire Mutex</span></span>
+        <span id="code-line-check" class="text-slate-500 transition-colors pl-4"><span class="text-purple-400">if</span> catalog[book_id][<span class="text-emerald-300">"copies"</span>] &gt; 0:</span>
+            <span id="code-line-sleep" class="text-slate-500 transition-colors pl-8">time.sleep(delay) <span class="text-slate-600"># Scan Barcode</span></span>
+            <span id="code-line-dec" class="text-slate-500 transition-colors pl-8">catalog[book_id][<span class="text-emerald-300">"copies"</span>] -= 1</span>
+            <span id="code-line-rec" class="text-slate-500 transition-colors pl-8">catalog[book_id][<span class="text-emerald-300">"borrowers"</span>].append(user_name)</span>
+            <span class="pl-8 text-emerald-400"><span class="text-purple-400">return</span> <span class="text-emerald-300">"SUCCESS"</span></span>
+        <span class="pl-4 text-purple-400">else:</span>
+            <span class="pl-8 text-rose-400"><span class="text-purple-400">return</span> <span class="text-rose-300">"REJECTED: 0 COPIES"</span></span></pre>
+
+        <p class="text-xs text-slate-400">
+          When both users select the <strong>same 1-copy book</strong>, the simulation demonstrates why <code class="text-amber-400">library_lock</code> is vital to prevent race hazards.
+        </p>
+      </div>
+
+      <!-- Live Dual-User Terminal Console Stream (7 cols) -->
+      <div class="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between shadow-xl h-[330px]">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+            <h3 class="font-bold text-sm text-white">Live Library Transaction &amp; Audit Log</h3>
+          </div>
+          <button onclick="clearAuditLog()" class="text-xs text-slate-400 hover:text-white transition-colors">Clear Log</button>
+        </div>
+
+        <div id="audit-log-stream" class="flex-1 bg-slate-950 rounded-xl p-3 font-mono text-xs overflow-y-auto mt-2 custom-scroll space-y-1.5 text-slate-300 border border-slate-900">
+          <div class="text-slate-500">// Terminal initialized. User 1 and User 2 can now search and pick books.</div>
+        </div>
+
+        <div class="pt-2 text-[11px] text-slate-400 flex items-center justify-between">
+          <span>Active Mode: <strong id="footer-mode-label" class="text-emerald-400">Mutex Protected</strong></span>
+          <button onclick="quickSelectScenarioE()" class="text-amber-400 hover:underline flex items-center gap-1 font-semibold">
+            ⚡ Quick-Select Single Copy Book (Operating Systems - 1 Copy) for both users
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800 py-3.5 px-6 text-center text-xs text-slate-500 bg-slate-950">
+    <p>Library Dual-User Concurrency Simulator</p>
+  </footer>
+
+  <!-- Simulation Logic & Interactivity -->
+  <script>
+    // Library Book Catalog
+    const initialCatalog = [
+      {
+        id: "OS-SILB",
+        title: "Operating System Concepts (10th Ed.)",
+        author: "Silberschatz, Galvin & Gagne",
+        copies: 1,
+        totalCopies: 1,
+        borrowers: [],
+        tag: "Last Copy",
+        badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+        cover: "📘"
+      },
+      {
+        id: "CN-PETE",
+        title: "Computer Networks: A Systems Approach",
+        author: "Larry Peterson & Bruce Davie",
+        copies: 1,
+        totalCopies: 1,
+        borrowers: [],
+        tag: "1 Copy Left",
+        badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+        cover: "📙"
+      },
+      {
+        id: "ALGO-CLRS",
+        title: "Introduction to Algorithms (CLRS 4th Ed.)",
+        author: "Cormen, Leiserson, Rivest & Stein",
+        copies: 2,
+        totalCopies: 2,
+        borrowers: [],
+        tag: "2 Copies Available",
+        badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+        cover: "📗"
+      },
+      {
+        id: "DB-KORTH",
+        title: "Database System Concepts (7th Ed.)",
+        author: "Silberschatz, Korth & Sudarshan",
+        copies: 1,
+        totalCopies: 1,
+        borrowers: [],
+        tag: "1 Copy Left",
+        badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+        cover: "📕"
+      },
+      {
+        id: "AI-RUSS",
+        title: "Artificial Intelligence: A Modern Approach",
+        author: "Stuart Russell & Peter Norvig",
+        copies: 3,
+        totalCopies: 3,
+        borrowers: [],
+        tag: "3 Copies Available",
+        badgeClass: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+        cover: "📓"
+      }
+    ];
+
+    let catalog = JSON.parse(JSON.stringify(initialCatalog));
+
+    // Simulation State
+    let simConfig = {
+      isMutexActive: true,
+      user1SelectedId: null,
+      user2SelectedId: null,
+      user1Confirmed: false,
+      user2Confirmed: false,
+      lockOwner: null,
+      lockQueue: [],
+      isSimulationRunning: false
+    };
+
+    function appendAuditLog(msg, colorClass = "text-slate-300") {
+      const stream = document.getElementById('audit-log-stream');
+      const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
+      const row = document.createElement('div');
+      row.className = `flex gap-2 ${colorClass}`;
+      row.innerHTML = `<span class="text-slate-600 font-mono">[${time}]</span> <span>${msg}</span>`;
+      stream.appendChild(row);
+      stream.scrollTop = stream.scrollHeight;
+    }
+
+    function clearAuditLog() {
+      document.getElementById('audit-log-stream').innerHTML = '<div class="text-slate-500">// Audit log cleared.</div>';
+    }
+
+    function setMode(useMutex) {
+      if (simConfig.isSimulationRunning) return;
+      simConfig.isMutexActive = useMutex;
+
+      const mutexBtn = document.getElementById('mode-mutex-btn');
+      const unsafeBtn = document.getElementById('mode-unsafe-btn');
+      const footerLabel = document.getElementById('footer-mode-label');
+
+      if (useMutex) {
+        mutexBtn.className = "px-3 py-1.5 rounded-lg font-semibold transition-all bg-emerald-600 text-white shadow flex items-center gap-1.5";
+        unsafeBtn.className = "px-3 py-1.5 rounded-lg font-semibold transition-all text-slate-400 hover:text-white flex items-center gap-1.5";
+        footerLabel.innerText = "Mutex Protected (Safe)";
+        footerLabel.className = "text-emerald-400";
+        appendAuditLog("Mode switched: 🛡️ MUTEX SYNCHRONIZATION ENABLED (Mutual Exclusion via threading.Lock)", "text-emerald-400 font-bold");
+      } else {
+        unsafeBtn.className = "px-3 py-1.5 rounded-lg font-semibold transition-all bg-rose-600 text-white shadow flex items-center gap-1.5";
+        mutexBtn.className = "px-3 py-1.5 rounded-lg font-semibold transition-all text-slate-400 hover:text-white flex items-center gap-1.5";
+        footerLabel.innerText = "Unsafe Concurrency (Race Hazard)";
+        footerLabel.className = "text-rose-400";
+        appendAuditLog("Mode switched: ⚠️ UNSAFE EXECUTION ENABLED (No Mutex lock; critical section exposed)", "text-rose-400 font-bold");
+      }
+    }
+
+    // Render Book Catalogs for both sides
+    function renderCatalogs() {
+      ['u1', 'u2'].forEach(userId => {
+        filterBooks(userId);
+      });
+    }
+
+    function filterBooks(userId) {
+      const query = document.getElementById(`${userId}-search-input`).value.toLowerCase();
+      const listContainer = document.getElementById(`${userId}-catalog-list`);
+      listContainer.innerHTML = '';
+
+      const filtered = catalog.filter(b => 
+        b.title.toLowerCase().includes(query) || 
+        b.author.toLowerCase().includes(query)
+      );
+
+      if (filtered.length === 0) {
+        listContainer.innerHTML = '<div class="text-xs text-slate-500 p-3 text-center">No matching books found in library catalog.</div>';
+        return;
+      }
+
+      filtered.forEach(book => {
+        const isSelected = (userId === 'u1' && simConfig.user1SelectedId === book.id) || 
+                           (userId === 'u2' && simConfig.user2SelectedId === book.id);
+
+        const item = document.createElement('div');
+        const borderColor = isSelected 
+          ? (userId === 'u1' ? 'border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500' : 'border-rose-500 bg-rose-950/40 ring-1 ring-rose-500')
+          : 'border-slate-800 bg-slate-950/60 hover:bg-slate-800/60';
+
+        item.className = `p-2.5 rounded-xl border ${borderColor} transition-all cursor-pointer flex items-center justify-between gap-2`;
+        item.onclick = () => selectBookForUser(userId, book.id);
+
+        const copyBadgeClass = book.copies > 0 ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300";
+
+        item.innerHTML = `
+          <div class="flex items-center gap-2.5 overflow-hidden">
+            <span class="text-xl">${book.cover}</span>
+            <div class="truncate">
+              <div class="font-semibold text-xs text-white truncate">${book.title}</div>
+              <div class="text-[11px] text-slate-400 truncate">${book.author}</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 flex-shrink-0">
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${copyBadgeClass}">
+              ${book.copies} ${book.copies === 1 ? 'copy' : 'copies'}
+            </span>
+            <button class="px-2 py-1 text-[10px] font-bold rounded-lg ${isSelected ? 'bg-cyan-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+              ${isSelected ? 'Selected ✓' : 'Select'}
+            </button>
+          </div>
+        `;
+        listContainer.appendChild(item);
+      });
+    }
+
+    function selectBookForUser(userId, bookId) {
+      if (simConfig.isSimulationRunning) return;
+      const book = catalog.find(b => b.id === bookId);
+      if (!book) return;
+
+      if (userId === 'u1') {
+        simConfig.user1SelectedId = bookId;
+        simConfig.user1Confirmed = false;
+        document.getElementById('u1-book-cover').innerText = book.cover;
+        document.getElementById('u1-book-title').innerText = book.title;
+        document.getElementById('u1-book-meta').innerText = `Author: ${book.author} • Available: ${book.copies}/${book.totalCopies}`;
+        document.getElementById('u1-selection-badge').innerText = "Selected (Unconfirmed)";
+        document.getElementById('u1-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
+        document.getElementById('u1-confirm-btn').disabled = false;
+        document.getElementById('u1-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer shadow-lg shadow-indigo-600/20";
+        document.getElementById('u1-status-pill').innerText = "BOOK SELECTED";
+        document.getElementById('u1-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+        appendAuditLog(`[User 1 (Alice)] Selected "${book.title}" (${book.copies} copy in shelf)`, "text-indigo-300");
+      } else {
+        simConfig.user2SelectedId = bookId;
+        simConfig.user2Confirmed = false;
+        document.getElementById('u2-book-cover').innerText = book.cover;
+        document.getElementById('u2-book-title').innerText = book.title;
+        document.getElementById('u2-book-meta').innerText = `Author: ${book.author} • Available: ${book.copies}/${book.totalCopies}`;
+        document.getElementById('u2-selection-badge').innerText = "Selected (Unconfirmed)";
+        document.getElementById('u2-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
+        document.getElementById('u2-confirm-btn').disabled = false;
+        document.getElementById('u2-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-500 text-white transition-colors cursor-pointer shadow-lg shadow-rose-600/20";
+        document.getElementById('u2-status-pill').innerText = "BOOK SELECTED";
+        document.getElementById('u2-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30";
+        appendAuditLog(`[User 2 (Bob)] Selected "${book.title}" (${book.copies} copy in shelf)`, "text-rose-300");
+      }
+
+      renderCatalogs();
+      checkBothConfirmed();
+    }
+
+    function confirmUserSelection(userId) {
+      if (userId === 'u1' && simConfig.user1SelectedId) {
+        simConfig.user1Confirmed = true;
+        document.getElementById('u1-selection-badge').innerText = "Choice Locked In ✓";
+        document.getElementById('u1-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold";
+        document.getElementById('u1-confirm-btn').disabled = true;
+        document.getElementById('u1-confirm-btn').innerText = "User 1 Ready ✓";
+        document.getElementById('u1-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 text-emerald-400 border border-emerald-500/30 cursor-default";
+        document.getElementById('u1-status-pill').innerText = "READY FOR CHECKOUT";
+        document.getElementById('u1-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+        appendAuditLog(`[User 1 (Alice)] Confirmed choice and requested checkout barcode scan.`, "text-indigo-400 font-semibold");
+      } else if (userId === 'u2' && simConfig.user2SelectedId) {
+        simConfig.user2Confirmed = true;
+        document.getElementById('u2-selection-badge').innerText = "Choice Locked In ✓";
+        document.getElementById('u2-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold";
+        document.getElementById('u2-confirm-btn').disabled = true;
+        document.getElementById('u2-confirm-btn').innerText = "User 2 Ready ✓";
+        document.getElementById('u2-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 text-emerald-400 border border-emerald-500/30 cursor-default";
+        document.getElementById('u2-status-pill').innerText = "READY FOR CHECKOUT";
+        document.getElementById('u2-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+        appendAuditLog(`[User 2 (Bob)] Confirmed choice and requested checkout barcode scan.`, "text-rose-400 font-semibold");
+      }
+      checkBothConfirmed();
+    }
+
+    function checkBothConfirmed() {
+      const runBtn = document.getElementById('btn-run-simulation');
+      const promptText = document.getElementById('sim-prompt-text');
+
+      if (simConfig.user1Confirmed && simConfig.user2Confirmed) {
+        runBtn.disabled = false;
+        runBtn.className = "px-5 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white cursor-pointer shadow-lg shadow-teal-500/30 transition-all flex items-center gap-2 animate-bounce";
+        
+        const sameBook = simConfig.user1SelectedId === simConfig.user2SelectedId;
+        const b = catalog.find(item => item.id === simConfig.user1SelectedId);
+        
+        if (sameBook && b.totalCopies === 1) {
+          promptText.innerHTML = `⚠️ <strong class="text-white">COMPETITION TRIGGER:</strong> Both users requested the <strong>last copy</strong> of <em>"${b.title}"</em>!`;
+          promptText.className = "text-amber-300 font-semibold";
+        } else if (sameBook) {
+          promptText.innerHTML = `Both users chose <em>"${b.title}"</em> (${b.copies} copies left).`;
+          promptText.className = "text-cyan-300 font-semibold";
+        } else {
+          promptText.innerHTML = `Ready! User 1 and User 2 chose different books.`;
+          promptText.className = "text-emerald-300 font-semibold";
+        }
+      } else {
+        runBtn.disabled = true;
+        runBtn.className = "px-5 py-2 rounded-xl font-bold text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 transition-all flex items-center gap-2 shadow-lg";
+        promptText.innerText = "👉 Both users must select and confirm their books above to begin!";
+        promptText.className = "text-amber-400 font-medium animate-pulse";
+      }
+    }
+
+    function quickSelectScenarioE() {
+      selectBookForUser('u1', 'OS-SILB');
+      confirmUserSelection('u1');
+      selectBookForUser('u2', 'OS-SILB');
+      confirmUserSelection('u2');
+    }
+
+    function sleep(ms) {
+      return new Promise(res => setTimeout(res, ms));
+    }
+
+    // Mutex Lock Queue Simulation
+    async function acquireLock(userId, userName) {
+      if (!simConfig.lockOwner) {
+        simConfig.lockOwner = userId;
+        updateMutexUI(userName);
+        return;
+      }
+      return new Promise(resolve => {
+        simConfig.lockQueue.push({ userId, userName, resolve });
+        updateMutexUI(simConfig.lockOwner === 'u1' ? 'User 1 (Alice)' : 'User 2 (Bob)');
+      });
+    }
+
+    function releaseLock(userId) {
+      if (simConfig.lockOwner === userId) {
+        if (simConfig.lockQueue.length > 0) {
+          const next = simConfig.lockQueue.shift();
+          simConfig.lockOwner = next.userId;
+          updateMutexUI(next.userName);
+          next.resolve();
+        } else {
+          simConfig.lockOwner = null;
+          updateMutexUI(null);
+        }
+      }
+    }
+
+    function updateMutexUI(ownerName) {
+      const badge = document.getElementById('lock-state-badge');
+      const ownerText = document.getElementById('lock-owner-text');
+      if (ownerName) {
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span><span>LOCKED</span>`;
+        badge.className = "px-2.5 py-0.5 rounded-full font-bold font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1.5";
+        ownerText.innerText = ownerName;
+        ownerText.className = "font-mono text-amber-300 font-bold";
+      } else {
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span><span>UNLOCKED</span>`;
+        badge.className = "px-2.5 py-0.5 rounded-full font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5";
+        ownerText.innerText = "None";
+        ownerText.className = "font-mono text-slate-200";
+      }
+    }
+
+    // MAIN DUAL-THREAD CONCURRENCY SIMULATION
+    async function startDualCheckoutSimulation() {
+      if (simConfig.isSimulationRunning) return;
+      simConfig.isSimulationRunning = true;
+
+      document.getElementById('btn-run-simulation').disabled = true;
+      document.getElementById('btn-run-simulation').classList.remove('animate-bounce');
+      document.getElementById('alert-banner-race').classList.add('hidden');
+      document.getElementById('alert-banner-safe').classList.add('hidden');
+
+      const delaySec = parseFloat(document.getElementById('sim-delay').value);
+      const delayMs = delaySec * 1000;
+
+      appendAuditLog(`\n================ SIMULATION START [${simConfig.isMutexActive ? 'MUTEX PROTECTED' : 'UNSAFE CONCURRENCY'}] ================`, "text-cyan-400 font-bold");
+
+      const book1 = catalog.find(b => b.id === simConfig.user1SelectedId);
+      const book2 = catalog.find(b => b.id === simConfig.user2SelectedId);
+
+      const results = { u1: null, u2: null };
+
+      if (!simConfig.isMutexActive) {
+        // Unsafe Concurrent Thread Execution
+        const t1 = executeUnsafeThread('u1', 'User 1 (Alice)', book1, delayMs, results);
+        const t2 = (async () => {
+          await sleep(40); // slight OS scheduler offset
+          return executeUnsafeThread('u2', 'User 2 (Bob)', book2, delayMs, results);
+        })();
+
+        await Promise.all([t1, t2]);
+
+        // Evaluate outcomes
+        if (book1.id === book2.id && book1.totalCopies === 1 && results.u1 === 'SUCCESS' && results.u2 === 'SUCCESS') {
+          // RACE CONDITION!
+          document.getElementById('race-book-name').innerText = book1.title;
+          document.getElementById('alert-banner-race').classList.remove('hidden');
+          appendAuditLog(`💥 RACE CONDITION OCCURRED! Both users checked out the single available copy of "${book1.title}". Catalog is corrupted!`, "text-rose-400 font-bold");
+        } else {
+          appendAuditLog(`Execution completed without duplicate issue.`, "text-slate-300");
+        }
+
+      } else {
+        // Mutex Protected Thread Execution
+        const t1 = executeMutexThread('u1', 'User 1 (Alice)', book1, delayMs, results);
+        const t2 = (async () => {
+          await sleep(40);
+          return executeMutexThread('u2', 'User 2 (Bob)', book2, delayMs, results);
+        })();
+
+        await Promise.all([t1, t2]);
+
+        if (book1.id === book2.id && book1.totalCopies === 1) {
+          const winner = results.u1 === 'SUCCESS' ? 'User 1 (Alice)' : 'User 2 (Bob)';
+          document.getElementById('safe-winner-name').innerText = winner;
+          document.getElementById('alert-banner-safe').classList.remove('hidden');
+          appendAuditLog(`🛡️ MUTEX PROTECTION SUCCEEDED! Exactly 1 user (${winner}) acquired the book. Mutual exclusion guaranteed.`, "text-emerald-400 font-bold");
+        }
+      }
+
+      renderCatalogs();
+      simConfig.isSimulationRunning = false;
+      document.getElementById('sim-prompt-text').innerText = "Simulation finished! Click 'Reset' to test again or choose other books.";
+      document.getElementById('sim-prompt-text').className = "text-slate-300 font-semibold";
+    }
+
+    async function executeUnsafeThread(userId, userName, book, delayMs, results) {
+      const stepEl = document.getElementById(`${userId}-pipe-step`);
+      const obsEl = document.getElementById(`${userId}-pipe-obs`);
+      const resEl = document.getElementById(`${userId}-pipe-res`);
+      const progEl = document.getElementById(`${userId}-progress`);
+      const lockEl = document.getElementById(`${userId}-pipe-lock`);
+      const statusPill = document.getElementById(`${userId}-status-pill`);
+
+      lockEl.innerText = "No Mutex Active";
+      statusPill.innerText = "CHECKING CATALOG";
+      statusPill.className = "text-xs font-bold px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30";
+      progEl.style.width = "35%";
+
+      // Step 1: Read copies
+      stepEl.innerText = `Checking "${book.title}" availability...`;
+      obsEl.innerText = `${book.copies} copies available`;
+      appendAuditLog(`[${userName}] Checked "${book.title}": Observed ${book.copies} available copy.`, "text-cyan-300");
+
+      if (book.copies > 0) {
+        stepEl.innerText = `Scanning barcode (${delayMs/1000}s window)...`;
+        progEl.style.width = "70%";
+        statusPill.innerText = "SCANNING BARCODE";
+        appendAuditLog(`[${userName}] Found available! Processing checkout...`, "text-amber-300");
+
+        // The critical section vulnerability window!
+        await sleep(delayMs);
+
+        // Step 2: Unprotected write
+        book.copies -= 1;
+        book.borrowers.push(userName);
+        results[userId] = 'SUCCESS';
+
+        stepEl.innerText = "Checkout complete!";
+        resEl.innerText = "BOOK ISSUED (Success)";
+        resEl.className = "text-emerald-400 font-bold";
+        progEl.style.width = "100%";
+        statusPill.innerText = "BOOK ISSUED";
+        statusPill.className = "text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+        appendAuditLog(`--> [${userName}] SUCCESS: Book issued! Remaining copies in catalog: ${book.copies}`, "text-emerald-400 font-bold");
+      } else {
+        results[userId] = 'REJECTED';
+        stepEl.innerText = "No copies left in catalog.";
+        resEl.innerText = "REJECTED (0 copies)";
+        resEl.className = "text-rose-400 font-bold";
+        progEl.style.width = "100%";
+        statusPill.innerText = "UNAVAILABLE";
+        statusPill.className = "text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30";
+        appendAuditLog(`--> [${userName}] REJECTED: All copies currently issued!`, "text-rose-400");
+      }
+    }
+
+    async function executeMutexThread(userId, userName, book, delayMs, results) {
+      const stepEl = document.getElementById(`${userId}-pipe-step`);
+      const obsEl = document.getElementById(`${userId}-pipe-obs`);
+      const resEl = document.getElementById(`${userId}-pipe-res`);
+      const progEl = document.getElementById(`${userId}-progress`);
+      const lockEl = document.getElementById(`${userId}-pipe-lock`);
+      const statusPill = document.getElementById(`${userId}-status-pill`);
+
+      stepEl.innerText = "Requesting library_lock.acquire()...";
+      lockEl.innerText = "Waiting for Lock...";
+      lockEl.className = "text-[11px] text-amber-400 font-bold animate-pulse";
+      statusPill.innerText = "WAITING LOCK";
+      statusPill.className = "text-xs font-bold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse";
+      appendAuditLog(`[${userName}] Requesting library_lock.acquire() to access catalog critical section.`, "text-slate-400");
+
+      await acquireLock(userId, userName);
+
+      lockEl.innerText = "Lock Held (Owner)";
+      lockEl.className = "text-[11px] text-emerald-400 font-bold";
+      statusPill.innerText = "IN CRITICAL SECTION";
+      statusPill.className = "text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+      appendAuditLog(`[${userName}] 🔒 ACQUIRED MUTEX. Entered critical section.`, "text-amber-400 font-bold");
+
+      progEl.style.width = "40%";
+
+      try {
+        stepEl.innerText = `Checking "${book.title}" availability...`;
+        obsEl.innerText = `${book.copies} copies available`;
+        appendAuditLog(`[${userName}] Protected check: available copies = ${book.copies}`, "text-cyan-300");
+
+        if (book.copies > 0) {
+          stepEl.innerText = `Scanning barcode (${delayMs/1000}s)...`;
+          progEl.style.width = "80%";
+          appendAuditLog(`[${userName}] Copy verified! Scanning barcode safely inside lock...`, "text-emerald-300 font-medium");
+          await sleep(delayMs);
+
+          book.copies -= 1;
+          book.borrowers.push(userName);
+          results[userId] = 'SUCCESS';
+
+          stepEl.innerText = "Book issued!";
+          resEl.innerText = "BOOK ISSUED (Success)";
+          resEl.className = "text-emerald-400 font-bold";
+          progEl.style.width = "100%";
+          statusPill.innerText = "BOOK ISSUED";
+          statusPill.className = "text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+          appendAuditLog(`--> [${userName}] SUCCESS: Book issued! Remaining copies in catalog: ${book.copies}`, "text-emerald-400 font-bold");
+        } else {
+          results[userId] = 'REJECTED';
+          stepEl.innerText = "No copies remaining.";
+          resEl.innerText = "REJECTED (0 copies)";
+          resEl.className = "text-rose-400 font-bold";
+          progEl.style.width = "100%";
+          statusPill.innerText = "UNAVAILABLE";
+          statusPill.className = "text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30";
+          appendAuditLog(`--> [${userName}] REJECTED: All copies currently issued!`, "text-rose-400");
+        }
+      } finally {
+        releaseLock(userId);
+        lockEl.innerText = "Released";
+        lockEl.className = "text-[11px] text-slate-500";
+        appendAuditLog(`[${userName}] 🔓 RELEASED MUTEX via library_lock.release().`, "text-slate-400");
+      }
+    }
+
+    function resetLibrary() {
+      catalog = JSON.parse(JSON.stringify(initialCatalog));
+      simConfig.user1SelectedId = null;
+      simConfig.user2SelectedId = null;
+      simConfig.user1Confirmed = false;
+      simConfig.user2Confirmed = false;
+      simConfig.lockOwner = null;
+      simConfig.lockQueue = [];
+      simConfig.isSimulationRunning = false;
+
+      updateMutexUI(null);
+      document.getElementById('alert-banner-race').classList.add('hidden');
+      document.getElementById('alert-banner-safe').classList.add('hidden');
+
+      ['u1', 'u2'].forEach(u => {
+        document.getElementById(`${u}-search-input`).value = '';
+        document.getElementById(`${u}-book-cover`).innerText = "📚";
+        document.getElementById(`${u}-book-title`).innerText = "Please select a book from above";
+        document.getElementById(`${u}-book-meta`).innerText = "Author: - • Available: -";
+        document.getElementById(`${u}-selection-badge`).innerText = "No Book Selected";
+        document.getElementById(`${u}-selection-badge`).className = "text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400";
+        document.getElementById(`${u}-status-pill`).innerText = "SEARCHING BOOK";
+        document.getElementById(`${u}-status-pill`).className = "text-xs font-bold px-3 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700";
+        document.getElementById(`${u}-confirm-btn`).disabled = true;
+        document.getElementById(`${u}-confirm-btn`).innerText = u === 'u1' ? "Confirm User 1 Book Choice" : "Confirm User 2 Book Choice";
+        document.getElementById(`${u}-confirm-btn`).className = "w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 transition-colors flex items-center justify-center gap-2";
+        document.getElementById(`${u}-pipe-step`).innerText = "Select book above";
+        document.getElementById(`${u}-pipe-obs`).innerText = "-";
+        document.getElementById(`${u}-pipe-res`).innerText = "Pending";
+        document.getElementById(`${u}-pipe-res`).className = "text-slate-400";
+        document.getElementById(`${u}-progress`).style.width = "0%";
+        document.getElementById(`${u}-pipe-lock`).innerText = "Lock: Idle";
+      });
+
+      renderCatalogs();
+      checkBothConfirmed();
+      appendAuditLog("--- Library catalog and user terminals reset to initial state ---", "text-cyan-400");
+    }
+
+    // Initialize
+    window.addEventListener('DOMContentLoaded', () => {
+      renderCatalogs();
+    });
+  </script>
+</body>
+</html>
