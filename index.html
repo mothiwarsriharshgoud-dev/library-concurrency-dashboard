@@ -65,6 +65,16 @@
           </button>
         </div>
 
+        <!-- Scheduler Mode Selector -->
+        <div class="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs">
+          <span class="text-slate-400">Scheduler:</span>
+          <select id="sim-scheduler" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500 font-medium">
+            <option value="random">🎲 Random OS Race (50/50)</option>
+            <option value="u2">⚡ User 2 (Bob) First</option>
+            <option value="u1">⚡ User 1 (Alice) First</option>
+          </select>
+        </div>
+
         <!-- Delay Slider -->
         <div class="hidden sm:flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
           <span class="text-slate-400">Delay:</span>
@@ -775,20 +785,44 @@
 
       const results = { u1: null, u2: null };
 
+      // Determine thread scheduling order (Non-Deterministic OS Simulation)
+      const schedMode = document.getElementById('sim-scheduler').value;
+      let aliceFirst = true;
+      if (schedMode === 'random') {
+        aliceFirst = (Math.random() < 0.5); // 50% chance Alice wins lock race, 50% chance Bob wins
+      } else if (schedMode === 'u2') {
+        aliceFirst = false;
+      } else {
+        aliceFirst = true;
+      }
+
+      const u1Offset = aliceFirst ? 0 : 40;
+      const u2Offset = aliceFirst ? 40 : 0;
+
+      appendAuditLog(`[OS Scheduler Dispatch] Thread dispatch jitter applied: ${aliceFirst ? 'User 1 (Alice)' : 'User 2 (Bob)'} arrives at lock first.`, "text-indigo-300");
+
       if (!simConfig.isMutexActive) {
         // Unsafe Concurrent Thread Execution
-        const t1 = executeUnsafeThread('u1', 'User 1 (Alice)', book1, delayMs, results);
+        const t1 = (async () => {
+          if (u1Offset > 0) await sleep(u1Offset);
+          return executeUnsafeThread('u1', 'User 1 (Alice)', book1, delayMs, results);
+        })();
+
         const t2 = (async () => {
-          await sleep(40); // slight OS scheduler offset
+          if (u2Offset > 0) await sleep(u2Offset);
           return executeUnsafeThread('u2', 'User 2 (Bob)', book2, delayMs, results);
         })();
 
         await Promise.all([t1, t2]);
       } else {
         // Mutex Protected Thread Execution
-        const t1 = executeMutexThread('u1', 'User 1 (Alice)', book1, delayMs, results);
+        const t1 = (async () => {
+          if (u1Offset > 0) await sleep(u1Offset);
+          return executeMutexThread('u1', 'User 1 (Alice)', book1, delayMs, results);
+        })();
+
         const t2 = (async () => {
-          await sleep(40);
+          if (u2Offset > 0) await sleep(u2Offset);
           return executeMutexThread('u2', 'User 2 (Bob)', book2, delayMs, results);
         })();
 
