@@ -65,13 +65,14 @@
           </button>
         </div>
 
-        <!-- Scheduler Mode Selector -->
+        <!-- Dispatch Priority Selector -->
         <div class="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs">
-          <span class="text-slate-400">Scheduler:</span>
+          <span class="text-slate-400">Priority:</span>
           <select id="sim-scheduler" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500 font-medium">
-            <option value="random">🎲 Random OS Race (50/50)</option>
-            <option value="u2">⚡ User 2 (Bob) First</option>
-            <option value="u1">⚡ User 1 (Alice) First</option>
+            <option value="fifo" selected>⏱️ FIFO (First to Confirm Wins)</option>
+            <option value="u2">⚡ Force Bob (User 2) First</option>
+            <option value="u1">⚡ Force Alice (User 1) First</option>
+            <option value="random">🎲 Random Race (50/50)</option>
           </select>
         </div>
 
@@ -433,11 +434,16 @@
           <div class="text-slate-500">// Terminal initialized. User 1 and User 2 can now search and pick books.</div>
         </div>
 
-        <div class="pt-2 text-[11px] text-slate-400 flex items-center justify-between">
+        <div class="pt-2 text-[11px] text-slate-400 flex flex-wrap items-center justify-between gap-2">
           <span>Active Mode: <strong id="footer-mode-label" class="text-emerald-400">Mutex Protected</strong></span>
-          <button onclick="quickSelectScenarioE()" class="text-amber-400 hover:underline flex items-center gap-1 font-semibold">
-            ⚡ Quick-Select Single Copy Book (Operating Systems - 1 Copy) for both users
-          </button>
+          <div class="flex items-center gap-2">
+            <button onclick="quickSelectScenario(2)" class="px-2.5 py-1 rounded-lg bg-rose-950/70 hover:bg-rose-900 text-rose-300 border border-rose-700/50 flex items-center gap-1 font-semibold text-[11px] transition-colors" title="Simulates User 2 (Bob) clicking and confirming first">
+              ⚡ Quick-Test: Bob Confirms 1st
+            </button>
+            <button onclick="quickSelectScenario(1)" class="px-2.5 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/50 flex items-center gap-1 font-semibold text-[11px] transition-colors" title="Simulates User 1 (Alice) clicking and confirming first">
+              ⚡ Quick-Test: Alice Confirms 1st
+            </button>
+          </div>
         </div>
       </div>
 
@@ -520,6 +526,8 @@
       user2SelectedId: null,
       user1Confirmed: false,
       user2Confirmed: false,
+      confirmationOrder: [],                      // Tracks exact order of confirmation ['u1', 'u2'] or ['u2', 'u1']
+      confirmationTimes: { u1: null, u2: null },  // Exact timestamps of confirmation
       lockOwner: null,
       lockQueue: [],
       isSimulationRunning: false
@@ -627,12 +635,16 @@
       if (userId === 'u1') {
         simConfig.user1SelectedId = bookId;
         simConfig.user1Confirmed = false;
+        simConfig.confirmationOrder = simConfig.confirmationOrder.filter(id => id !== 'u1');
+        simConfig.confirmationTimes.u1 = null;
+
         document.getElementById('u1-book-cover').innerText = book.cover;
         document.getElementById('u1-book-title').innerText = book.title;
         document.getElementById('u1-book-meta').innerText = `Author: ${book.author} • Available: ${book.copies}/${book.totalCopies}`;
         document.getElementById('u1-selection-badge').innerText = "Selected (Unconfirmed)";
         document.getElementById('u1-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
         document.getElementById('u1-confirm-btn').disabled = false;
+        document.getElementById('u1-confirm-btn').innerText = "Confirm User 1 Book Choice";
         document.getElementById('u1-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer shadow-lg shadow-indigo-600/20";
         document.getElementById('u1-status-pill').innerText = "BOOK SELECTED";
         document.getElementById('u1-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
@@ -640,12 +652,16 @@
       } else {
         simConfig.user2SelectedId = bookId;
         simConfig.user2Confirmed = false;
+        simConfig.confirmationOrder = simConfig.confirmationOrder.filter(id => id !== 'u2');
+        simConfig.confirmationTimes.u2 = null;
+
         document.getElementById('u2-book-cover').innerText = book.cover;
         document.getElementById('u2-book-title').innerText = book.title;
         document.getElementById('u2-book-meta').innerText = `Author: ${book.author} • Available: ${book.copies}/${book.totalCopies}`;
         document.getElementById('u2-selection-badge').innerText = "Selected (Unconfirmed)";
         document.getElementById('u2-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30";
         document.getElementById('u2-confirm-btn').disabled = false;
+        document.getElementById('u2-confirm-btn').innerText = "Confirm User 2 Book Choice";
         document.getElementById('u2-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-500 text-white transition-colors cursor-pointer shadow-lg shadow-rose-600/20";
         document.getElementById('u2-status-pill').innerText = "BOOK SELECTED";
         document.getElementById('u2-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30";
@@ -657,26 +673,50 @@
     }
 
     function confirmUserSelection(userId) {
-      if (userId === 'u1' && simConfig.user1SelectedId) {
+      if (simConfig.isSimulationRunning) return;
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+
+      if (userId === 'u1' && simConfig.user1SelectedId && !simConfig.user1Confirmed) {
         simConfig.user1Confirmed = true;
-        document.getElementById('u1-selection-badge').innerText = "Choice Locked In ✓";
-        document.getElementById('u1-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold";
+        simConfig.confirmationTimes.u1 = timeStr;
+        if (!simConfig.confirmationOrder.includes('u1')) {
+          simConfig.confirmationOrder.push('u1');
+        }
+        const rank = simConfig.confirmationOrder.indexOf('u1') + 1;
+        const rankLabel = rank === 1 ? "🥇 1st in Queue" : "🥈 2nd in Queue";
+        const rankBadge = rank === 1 
+          ? "bg-amber-500/20 text-amber-300 border-amber-500/40" 
+          : "bg-indigo-500/20 text-indigo-300 border-indigo-500/40";
+
+        document.getElementById('u1-selection-badge').innerText = `${rankLabel} (${timeStr})`;
+        document.getElementById('u1-selection-badge').className = `text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${rankBadge}`;
         document.getElementById('u1-confirm-btn').disabled = true;
-        document.getElementById('u1-confirm-btn').innerText = "User 1 Ready ✓";
+        document.getElementById('u1-confirm-btn').innerText = `User 1 Ready (${rank === 1 ? '🥇 1st Priority' : '🥈 2nd Priority'}) ✓`;
         document.getElementById('u1-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 text-emerald-400 border border-emerald-500/30 cursor-default";
-        document.getElementById('u1-status-pill').innerText = "READY FOR CHECKOUT";
+        document.getElementById('u1-status-pill').innerText = rank === 1 ? "READY (1ST PRIORITY)" : "READY (2ND PRIORITY)";
         document.getElementById('u1-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
-        appendAuditLog(`[User 1 (Alice)] Confirmed choice and requested checkout barcode scan.`, "text-indigo-400 font-semibold");
-      } else if (userId === 'u2' && simConfig.user2SelectedId) {
+        appendAuditLog(`[User 1 (Alice)] Confirmed choice ${rank === 1 ? 'FIRST 🥇' : 'SECOND 🥈'} at ${timeStr}. Assigned Queue Position #${rank}.`, "text-indigo-400 font-semibold");
+      } else if (userId === 'u2' && simConfig.user2SelectedId && !simConfig.user2Confirmed) {
         simConfig.user2Confirmed = true;
-        document.getElementById('u2-selection-badge').innerText = "Choice Locked In ✓";
-        document.getElementById('u2-selection-badge').className = "text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold";
+        simConfig.confirmationTimes.u2 = timeStr;
+        if (!simConfig.confirmationOrder.includes('u2')) {
+          simConfig.confirmationOrder.push('u2');
+        }
+        const rank = simConfig.confirmationOrder.indexOf('u2') + 1;
+        const rankLabel = rank === 1 ? "🥇 1st in Queue" : "🥈 2nd in Queue";
+        const rankBadge = rank === 1 
+          ? "bg-amber-500/20 text-amber-300 border-amber-500/40" 
+          : "bg-rose-500/20 text-rose-300 border-rose-500/40";
+
+        document.getElementById('u2-selection-badge').innerText = `${rankLabel} (${timeStr})`;
+        document.getElementById('u2-selection-badge').className = `text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${rankBadge}`;
         document.getElementById('u2-confirm-btn').disabled = true;
-        document.getElementById('u2-confirm-btn').innerText = "User 2 Ready ✓";
+        document.getElementById('u2-confirm-btn').innerText = `User 2 Ready (${rank === 1 ? '🥇 1st Priority' : '🥈 2nd Priority'}) ✓`;
         document.getElementById('u2-confirm-btn').className = "w-full py-2.5 rounded-xl font-bold text-xs bg-slate-800 text-emerald-400 border border-emerald-500/30 cursor-default";
-        document.getElementById('u2-status-pill').innerText = "READY FOR CHECKOUT";
+        document.getElementById('u2-status-pill').innerText = rank === 1 ? "READY (1ST PRIORITY)" : "READY (2ND PRIORITY)";
         document.getElementById('u2-status-pill').className = "text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
-        appendAuditLog(`[User 2 (Bob)] Confirmed choice and requested checkout barcode scan.`, "text-rose-400 font-semibold");
+        appendAuditLog(`[User 2 (Bob)] Confirmed choice ${rank === 1 ? 'FIRST 🥇' : 'SECOND 🥈'} at ${timeStr}. Assigned Queue Position #${rank}.`, "text-rose-400 font-semibold");
       }
       checkBothConfirmed();
     }
@@ -689,32 +729,64 @@
         runBtn.disabled = false;
         runBtn.className = "px-5 py-2 rounded-xl font-bold text-xs bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white cursor-pointer shadow-lg shadow-teal-500/30 transition-all flex items-center gap-2 animate-bounce";
         
+        const firstUser = simConfig.confirmationOrder[0] === 'u1' ? 'User 1 (Alice)' : 'User 2 (Bob)';
+        const firstTime = simConfig.confirmationTimes[simConfig.confirmationOrder[0]];
+        const secondUser = simConfig.confirmationOrder[1] === 'u1' ? 'User 1 (Alice)' : 'User 2 (Bob)';
+        const secondTime = simConfig.confirmationTimes[simConfig.confirmationOrder[1]];
+
         const sameBook = simConfig.user1SelectedId === simConfig.user2SelectedId;
         const b = catalog.find(item => item.id === simConfig.user1SelectedId);
         
         if (sameBook && b.totalCopies === 1) {
-          promptText.innerHTML = `⚠️ <strong class="text-white">COMPETITION TRIGGER:</strong> Both users requested the <strong>last copy</strong> of <em>"${b.title}"</em>!`;
+          promptText.innerHTML = `⚠️ <strong class="text-white">COMPETITION:</strong> Both confirmed single copy of <em>"${b.title}"</em>! <span class="text-amber-300 font-bold">${firstUser} confirmed 1st (${firstTime})</span>, ahead of ${secondUser} (${secondTime}).`;
           promptText.className = "text-amber-300 font-semibold";
         } else if (sameBook) {
-          promptText.innerHTML = `Both users chose <em>"${b.title}"</em> (${b.copies} copies left).`;
+          promptText.innerHTML = `Both users chose <em>"${b.title}"</em> (${b.copies} copies left). ${firstUser} confirmed 1st.`;
           promptText.className = "text-cyan-300 font-semibold";
         } else {
-          promptText.innerHTML = `Ready! User 1 and User 2 chose different books.`;
+          promptText.innerHTML = `Ready! Different books selected. (${firstUser} confirmed 1st at ${firstTime}).`;
           promptText.className = "text-emerald-300 font-semibold";
         }
       } else {
         runBtn.disabled = true;
         runBtn.className = "px-5 py-2 rounded-xl font-bold text-xs bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700 transition-all flex items-center gap-2 shadow-lg";
-        promptText.innerText = "👉 Both users must select and confirm their books above to begin!";
-        promptText.className = "text-amber-400 font-medium animate-pulse";
+        
+        if (simConfig.confirmationOrder.length === 1) {
+          const soleId = simConfig.confirmationOrder[0];
+          const soleName = soleId === 'u1' ? 'User 1 (Alice)' : 'User 2 (Bob)';
+          const waitingName = soleId === 'u1' ? 'User 2 (Bob)' : 'User 1 (Alice)';
+          promptText.innerHTML = `⏳ <strong>${soleName}</strong> confirmed 1st! Waiting for <strong>${waitingName}</strong> to confirm choice...`;
+          promptText.className = "text-cyan-400 font-medium";
+        } else {
+          promptText.innerText = "👉 Both users must select and confirm their books above to begin!";
+          promptText.className = "text-amber-400 font-medium animate-pulse";
+        }
+      }
+    }
+
+    function quickSelectScenario(userFirst = 2) {
+      resetLibrary();
+      if (userFirst === 2) {
+        // Bob confirms first!
+        selectBookForUser('u2', 'OS-SILB');
+        confirmUserSelection('u2');
+        setTimeout(() => {
+          selectBookForUser('u1', 'OS-SILB');
+          confirmUserSelection('u1');
+        }, 80);
+      } else {
+        // Alice confirms first!
+        selectBookForUser('u1', 'OS-SILB');
+        confirmUserSelection('u1');
+        setTimeout(() => {
+          selectBookForUser('u2', 'OS-SILB');
+          confirmUserSelection('u2');
+        }, 80);
       }
     }
 
     function quickSelectScenarioE() {
-      selectBookForUser('u1', 'OS-SILB');
-      confirmUserSelection('u1');
-      selectBookForUser('u2', 'OS-SILB');
-      confirmUserSelection('u2');
+      quickSelectScenario(2);
     }
 
     function sleep(ms) {
@@ -785,21 +857,36 @@
 
       const results = { u1: null, u2: null };
 
-      // Determine thread scheduling order (Non-Deterministic OS Simulation)
+      // Determine thread scheduling order
       const schedMode = document.getElementById('sim-scheduler').value;
+      const firstConfirmedId = (simConfig.confirmationOrder && simConfig.confirmationOrder.length > 0) 
+        ? simConfig.confirmationOrder[0] 
+        : 'u1';
+      
       let aliceFirst = true;
-      if (schedMode === 'random') {
-        aliceFirst = (Math.random() < 0.5); // 50% chance Alice wins lock race, 50% chance Bob wins
+      if (schedMode === 'fifo') {
+        // Priority strictly follows who selected and confirmed first!
+        aliceFirst = (firstConfirmedId === 'u1');
       } else if (schedMode === 'u2') {
         aliceFirst = false;
-      } else {
+      } else if (schedMode === 'u1') {
         aliceFirst = true;
+      } else {
+        // Random 50/50 race
+        aliceFirst = (Math.random() < 0.5);
       }
 
-      const u1Offset = aliceFirst ? 0 : 40;
-      const u2Offset = aliceFirst ? 40 : 0;
+      const firstUserName = aliceFirst ? 'User 1 (Alice)' : 'User 2 (Bob)';
+      const secondUserName = aliceFirst ? 'User 2 (Bob)' : 'User 1 (Alice)';
+      const firstTime = simConfig.confirmationTimes[aliceFirst ? 'u1' : 'u2'] || '-';
+      const secondTime = simConfig.confirmationTimes[aliceFirst ? 'u2' : 'u1'] || '-';
 
-      appendAuditLog(`[OS Scheduler Dispatch] Thread dispatch jitter applied: ${aliceFirst ? 'User 1 (Alice)' : 'User 2 (Bob)'} arrives at lock first.`, "text-indigo-300");
+      // First user to confirm dispatches with 0ms offset; second user queues 60ms later
+      const u1Offset = aliceFirst ? 0 : 60;
+      const u2Offset = aliceFirst ? 60 : 0;
+
+      appendAuditLog(`[Queue Priority] 🥇 ${firstUserName} confirmed at ${firstTime} -> Dispatches FIRST to Mutex lock.`, "text-emerald-400 font-bold");
+      appendAuditLog(`[Queue Priority] 🥈 ${secondUserName} confirmed at ${secondTime} -> Queued behind first thread.`, "text-slate-400");
 
       if (!simConfig.isMutexActive) {
         // Unsafe Concurrent Thread Execution
@@ -880,10 +967,17 @@
           badgeEl.innerText = "CRITICAL: RACE CONDITION DETECTED";
 
           highlightEl.className = "p-4 rounded-xl border border-rose-600/60 bg-rose-900/30 flex flex-col md:flex-row md:items-center justify-between gap-4";
-          recipientEl.innerHTML = `<span class="text-rose-400">⚠️ BOTH User 1 (Alice) &amp; User 2 (Bob)</span>`;
+          recipientEl.innerHTML = `<span class="text-rose-400 font-extrabold text-xl">⚠️ BOTH User 1 (Alice) &amp; User 2 (Bob)</span>`;
           bookEl.innerText = `Book: "${book1.title}" (Original Inventory: 1 Physical Copy)`;
 
-          reasonSummaryEl.innerHTML = `<strong>Why did both users receive the book?</strong><br>Because <em>Mutual Exclusion was disabled (No Mutex)</em>. User 1 checked availability and found 1 copy. During User 1's barcode scan delay, User 2 <strong>also</strong> checked the catalog and read the stale state (<code class="text-amber-300">available_copies = 1</code>). Both threads proceeded to issue the book and decremented the count, leaving the library with 2 borrowers for 1 single physical copy!`;
+          reasonSummaryEl.innerHTML = `
+            <div class="space-y-2">
+              <p><strong>Why did both users receive the same single copy?</strong></p>
+              <p class="text-slate-300 leading-relaxed">
+                Because <em>Mutual Exclusion was disabled (No Mutex)</em>. The first thread checked available copies and saw 1. During its barcode scan delay, the second thread <strong>also</strong> inspected the catalog and read the un-updated state (<code class="text-amber-300">available_copies = 1</code>). Both proceeded to decrement the inventory concurrently, resulting in 2 borrowers registered for 1 single physical book!
+              </p>
+            </div>
+          `;
 
           // User 1
           u1Box.className = "rounded-xl p-4 border border-rose-500/50 bg-rose-950/40 text-rose-200 space-y-2";
@@ -916,16 +1010,53 @@
           const loserId = winnerId === 'u1' ? 'u2' : 'u1';
           const loserName = winnerId === 'u1' ? 'User 2 (Bob)' : 'User 1 (Alice)';
 
+          const winnerTime = simConfig.confirmationTimes[winnerId] || 'Earliest';
+          const loserTime = simConfig.confirmationTimes[loserId] || 'Later';
+          const confirmedFirst = (simConfig.confirmationOrder[0] === winnerId);
+
           iconEl.innerText = "🛡️";
           board.className = "rounded-2xl p-5 border border-emerald-500/50 bg-emerald-950/30 shadow-2xl transition-all duration-300 space-y-4 safe-glow";
           badgeEl.className = "px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
           badgeEl.innerText = "MUTUAL EXCLUSION ENFORCED (SAFE)";
 
           highlightEl.className = "p-4 rounded-xl border border-emerald-500/50 bg-emerald-900/20 flex flex-col md:flex-row md:items-center justify-between gap-4";
-          recipientEl.innerHTML = `<span class="text-emerald-400">🎉 ${winnerName}</span>`;
+          recipientEl.innerHTML = `<span class="text-emerald-400 font-extrabold text-xl">🎉 Book Issued To: ${winnerName}</span>`;
           bookEl.innerText = `Book: "${book1.title}" (Single Physical Copy Successfully Allocated)`;
 
-          reasonSummaryEl.innerHTML = `<strong>Why was the book issued to ${winnerName}?</strong><br>${winnerName}'s thread called <code class="text-emerald-300">library_lock.acquire()</code> first and took exclusive lock ownership. While holding the lock, ${winnerName} verified <code class="text-cyan-300">available_copies = 1</code> and decremented it to <code class="text-emerald-300">0</code>. ${loserName} had to wait in the blocked queue. When ${loserName} subsequently entered the critical section, zero copies remained, so ${loserName} was safely rejected.`;
+          reasonSummaryEl.innerHTML = `
+            <div class="space-y-3">
+              <div class="text-sm font-bold text-white flex items-center gap-2">
+                <span class="text-emerald-400">📌 Detailed Decision Breakdown: Why was the book issued to ${winnerName}?</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div class="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30 space-y-1">
+                  <div class="font-bold text-amber-300 flex items-center gap-1.5">
+                    <span>⏱️</span> 1. Confirmed First (FIFO)
+                  </div>
+                  <p class="text-slate-300 leading-relaxed">
+                    <strong>${winnerName}</strong> confirmed choice <strong>1st</strong> at <code class="text-amber-300 font-mono">${winnerTime}</code>.<br>
+                    <strong>${loserName}</strong> confirmed choice <strong>2nd</strong> at <code class="text-slate-400 font-mono">${loserTime}</code>.
+                  </p>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30 space-y-1">
+                  <div class="font-bold text-cyan-300 flex items-center gap-1.5">
+                    <span>🔒</span> 2. Mutex Lock Priority
+                  </div>
+                  <p class="text-slate-300 leading-relaxed">
+                    Because ${winnerName} confirmed first, their thread was scheduled first to invoke <code class="text-emerald-300 font-mono">library_lock.acquire()</code>. ${loserName}'s thread was queued behind it.
+                  </p>
+                </div>
+                <div class="p-3 rounded-xl bg-slate-900/90 border border-emerald-500/30 space-y-1">
+                  <div class="font-bold text-emerald-300 flex items-center gap-1.5">
+                    <span>📚</span> 3. Atomic Decrement &amp; Guard
+                  </div>
+                  <p class="text-slate-300 leading-relaxed">
+                    ${winnerName} read 1 copy in stock, verified barcode, and decremented it to 0. When ${loserName} entered the critical section after lock release, 0 copies remained, so ${loserName} was safely rejected!
+                  </p>
+                </div>
+              </div>
+            </div>
+          `;
 
           // Winner UI
           const winnerBox = winnerId === 'u1' ? u1Box : u2Box;
@@ -938,14 +1069,14 @@
 
           winnerBox.className = "rounded-xl p-4 border border-emerald-500/50 bg-emerald-950/40 text-emerald-200 space-y-2";
           winnerBadge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
-          winnerBadge.innerText = "BOOK ISSUED ✓";
-          winnerStatus.innerHTML = `<span class="text-emerald-400">🎉 Book Confirmed to ${winnerName}</span>`;
-          winnerWhy.innerHTML = `<strong>Acquired Mutex First:</strong> ${winnerName}'s thread was scheduled first and locked the critical section. It read <code class="text-cyan-300">available_copies = 1</code>, performed barcode verification, and decremented the inventory to 0 before releasing the lock.`;
+          winnerBadge.innerText = "BOOK ISSUED ✓ (1ST TO CONFIRM)";
+          winnerStatus.innerHTML = `<span class="text-emerald-400 font-bold">🎉 Book Confirmed to ${winnerName}</span>`;
+          winnerWhy.innerHTML = `<strong>Acquired Mutex First:</strong> ${winnerName} confirmed first at <code class="text-amber-300">${winnerTime}</code>. Their thread acquired <code class="text-cyan-300">library_lock</code>, saw <code class="text-cyan-300">available_copies = 1</code>, decremented it to 0, and took the physical copy before releasing the lock.`;
 
           winnerWhyBadge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300";
-          winnerWhyBadge.innerText = "SUCCESS (LOCK WINNER)";
+          winnerWhyBadge.innerText = "SUCCESS (CONFIRMED 1ST)";
           winnerWhyTitle.innerText = `${winnerName}: Book Successfully Issued`;
-          winnerWhyText.innerText = `${winnerName} held the mutex lock, entered the critical section while 1 copy was free, decremented inventory, and completed checkout.`;
+          winnerWhyText.innerText = `${winnerName} confirmed 1st at ${winnerTime} (ahead of ${loserName} at ${loserTime}). Acquired the Mutex lock first and completed checkout.`;
 
           // Loser UI
           const loserBox = loserId === 'u1' ? u1Box : u2Box;
@@ -958,14 +1089,14 @@
 
           loserBox.className = "rounded-xl p-4 border border-rose-500/50 bg-rose-950/40 text-rose-200 space-y-2";
           loserBadge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40";
-          loserBadge.innerText = "REJECTED (0 COPIES)";
-          loserStatus.innerHTML = `<span class="text-rose-400">❌ Request Rejected</span>`;
-          loserWhy.innerHTML = `<strong>Blocked by Mutex:</strong> ${loserName} had to wait while ${winnerName} held the lock. When the lock was handed over, ${loserName} entered the critical section and checked availability, seeing <code class="text-rose-300">available_copies = 0</code>. ${loserName} was safely turned away to prevent duplicate issue.`;
+          loserBadge.innerText = "REJECTED (CONFIRMED 2ND - 0 COPIES)";
+          loserStatus.innerHTML = `<span class="text-rose-400 font-bold">❌ Request Rejected</span>`;
+          loserWhy.innerHTML = `<strong>Blocked by Mutex:</strong> ${loserName} confirmed 2nd at <code class="text-slate-300">${loserTime}</code> and had to wait while ${winnerName} held the lock. When the lock was handed over, ${loserName} entered the critical section and checked availability, seeing <code class="text-rose-300">available_copies = 0</code>. ${loserName} was safely turned away to prevent duplicate issue.`;
 
           loserWhyBadge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-300";
-          loserWhyBadge.innerText = "SAFELY REJECTED";
+          loserWhyBadge.innerText = "SAFELY REJECTED (2ND)";
           loserWhyTitle.innerText = `${loserName}: Request Safely Denied`;
-          loserWhyText.innerText = `${loserName} was queued behind the lock. After lock release, inventory was 0; mutual exclusion protected the library from double-booking.`;
+          loserWhyText.innerText = `${loserName} confirmed 2nd at ${loserTime}. Arrived at critical section after ${winnerName} had already reserved the only physical copy.`;
         }
       } else {
         // Different books or multiple copies
@@ -1128,6 +1259,8 @@
       simConfig.user2SelectedId = null;
       simConfig.user1Confirmed = false;
       simConfig.user2Confirmed = false;
+      simConfig.confirmationOrder = [];
+      simConfig.confirmationTimes = { u1: null, u2: null };
       simConfig.lockOwner = null;
       simConfig.lockQueue = [];
       simConfig.isSimulationRunning = false;
