@@ -117,30 +117,59 @@
   <!-- Main Split Dashboard -->
   <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
 
-    <!-- Race Condition / Success Floating Banner -->
-    <div id="alert-banner-race" class="hidden rounded-2xl p-4 border border-rose-600/70 bg-rose-950/60 text-rose-200 race-alert flex items-start gap-4">
-      <div class="text-3xl flex-shrink-0 mt-0.5">💥</div>
-      <div class="space-y-1">
-        <h4 class="font-bold text-sm text-white flex items-center gap-2">
-          <span>RACE CONDITION DETECTED! (DUPLICATE BOOK ISSUE)</span>
-          <span class="text-[10px] bg-rose-900 px-2 py-0.5 rounded text-rose-200 font-mono">Unsafe Execution</span>
-        </h4>
-        <p class="text-xs text-rose-200 leading-relaxed">
-          Both <strong>User 1 (Alice)</strong> and <strong>User 2 (Bob)</strong> requested the same book (<span id="race-book-name" class="font-bold text-white underline"></span>) which had only <strong>1 physical copy available</strong>! Because no Mutex lock protected the check-and-decrement operation, both threads inspected the catalog at the same time, saw <code>available_copies = 1</code>, and both checked it out! The library system has duplicate borrowers for the single copy.
-        </p>
+    <!-- Unified Library Allocation Decision Board -->
+    <div id="allocation-decision-board" class="hidden rounded-2xl p-5 border shadow-2xl transition-all duration-300 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl" id="decision-icon">📜</span>
+          <div>
+            <h3 class="font-bold text-base text-white" id="decision-title">Official Library Allocation Decision</h3>
+            <p class="text-xs text-slate-400" id="decision-subtitle">Concurrency analysis and real-time checkout determination</p>
+          </div>
+        </div>
+        <div id="decision-badge" class="px-3 py-1 rounded-full text-xs font-bold font-mono"></div>
       </div>
-    </div>
 
-    <div id="alert-banner-safe" class="hidden rounded-2xl p-4 border border-emerald-600/70 bg-emerald-950/60 text-emerald-200 safe-glow flex items-start gap-4">
-      <div class="text-3xl flex-shrink-0 mt-0.5">🛡️</div>
-      <div class="space-y-1">
-        <h4 class="font-bold text-sm text-white flex items-center gap-2">
-          <span>MUTEX SYNCHRONIZATION SUCCESSFUL! (MUTUAL EXCLUSION ENFORCED)</span>
-          <span class="text-[10px] bg-emerald-900 px-2 py-0.5 rounded text-emerald-200 font-mono">threading.Lock() Active</span>
-        </h4>
-        <p class="text-xs text-emerald-200 leading-relaxed">
-          The Mutex lock guaranteed that only one user thread entered the critical section. <strong id="safe-winner-name">User 1</strong> acquired the lock first and successfully checked out the book. The other user was blocked until the lock was released, saw <code>available_copies = 0</code>, and was safely notified that no copies remain. Duplicate issue was prevented!
-        </p>
+      <!-- Main Winner Highlight -->
+      <div id="decision-highlight" class="p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="text-xs uppercase font-bold tracking-wider text-slate-400">Book Officially Issued To:</div>
+          <div id="decision-recipient" class="text-xl md:text-2xl font-extrabold text-white flex items-center gap-2"></div>
+          <div id="decision-book" class="text-xs text-slate-300 font-mono mt-0.5"></div>
+        </div>
+        <div id="decision-reason-box" class="text-xs max-w-lg p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 text-slate-200 leading-relaxed space-y-1">
+          <div class="font-bold text-amber-400 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+            <span>💡 Why This Decision Occurred:</span>
+          </div>
+          <p id="decision-reason-summary"></p>
+        </div>
+      </div>
+
+      <!-- Detailed 'Why' Comparison Breakdown -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+        <div id="why-u1-card" class="p-4 rounded-xl border bg-slate-950/60 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-indigo-400 flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+              User 1 (Alice) Breakdown
+            </span>
+            <span id="why-u1-badge" class="font-mono text-[10px] px-2 py-0.5 rounded font-bold"></span>
+          </div>
+          <div id="why-u1-title" class="text-sm font-bold text-white"></div>
+          <p id="why-u1-text" class="text-xs text-slate-300 leading-relaxed"></p>
+        </div>
+
+        <div id="why-u2-card" class="p-4 rounded-xl border bg-slate-950/60 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-rose-400 flex items-center gap-1.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+              User 2 (Bob) Breakdown
+            </span>
+            <span id="why-u2-badge" class="font-mono text-[10px] px-2 py-0.5 rounded font-bold"></span>
+          </div>
+          <div id="why-u2-title" class="text-sm font-bold text-white"></div>
+          <p id="why-u2-text" class="text-xs text-slate-300 leading-relaxed"></p>
+        </div>
       </div>
     </div>
 
@@ -220,6 +249,21 @@
             </div>
             <div class="w-full bg-slate-900 h-2 rounded-full overflow-hidden mt-1">
               <div id="u1-progress" class="bg-indigo-500 h-full w-0 transition-all duration-300"></div>
+            </div>
+          </div>
+
+          <!-- User 1 Clear Verdict & Why Box -->
+          <div id="u1-verdict-box" class="hidden rounded-xl p-4 border transition-all duration-300 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400">User 1 Allocation Verdict:</span>
+              <span id="u1-verdict-badge" class="px-2.5 py-0.5 rounded text-[11px] font-bold font-mono"></span>
+            </div>
+            <div id="u1-verdict-status" class="text-base font-extrabold flex items-center gap-2"></div>
+            <div class="bg-slate-950/80 p-3 rounded-lg border border-slate-800/80 text-xs text-slate-300 space-y-1">
+              <div class="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                <span>💡 Why This Happened:</span>
+              </div>
+              <p id="u1-verdict-why" class="leading-relaxed"></p>
             </div>
           </div>
 
@@ -305,6 +349,21 @@
             </div>
             <div class="w-full bg-slate-900 h-2 rounded-full overflow-hidden mt-1">
               <div id="u2-progress" class="bg-rose-500 h-full w-0 transition-all duration-300"></div>
+            </div>
+          </div>
+
+          <!-- User 2 Clear Verdict & Why Box -->
+          <div id="u2-verdict-box" class="hidden rounded-xl p-4 border transition-all duration-300 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-400">User 2 Allocation Verdict:</span>
+              <span id="u2-verdict-badge" class="px-2.5 py-0.5 rounded text-[11px] font-bold font-mono"></span>
+            </div>
+            <div id="u2-verdict-status" class="text-base font-extrabold flex items-center gap-2"></div>
+            <div class="bg-slate-950/80 p-3 rounded-lg border border-slate-800/80 text-xs text-slate-300 space-y-1">
+              <div class="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                <span>💡 Why This Happened:</span>
+              </div>
+              <p id="u2-verdict-why" class="leading-relaxed"></p>
             </div>
           </div>
 
@@ -702,8 +761,9 @@
 
       document.getElementById('btn-run-simulation').disabled = true;
       document.getElementById('btn-run-simulation').classList.remove('animate-bounce');
-      document.getElementById('alert-banner-race').classList.add('hidden');
-      document.getElementById('alert-banner-safe').classList.add('hidden');
+      document.getElementById('allocation-decision-board').classList.add('hidden');
+      document.getElementById('u1-verdict-box').classList.add('hidden');
+      document.getElementById('u2-verdict-box').classList.add('hidden');
 
       const delaySec = parseFloat(document.getElementById('sim-delay').value);
       const delayMs = delaySec * 1000;
@@ -724,17 +784,6 @@
         })();
 
         await Promise.all([t1, t2]);
-
-        // Evaluate outcomes
-        if (book1.id === book2.id && book1.totalCopies === 1 && results.u1 === 'SUCCESS' && results.u2 === 'SUCCESS') {
-          // RACE CONDITION!
-          document.getElementById('race-book-name').innerText = book1.title;
-          document.getElementById('alert-banner-race').classList.remove('hidden');
-          appendAuditLog(`💥 RACE CONDITION OCCURRED! Both users checked out the single available copy of "${book1.title}". Catalog is corrupted!`, "text-rose-400 font-bold");
-        } else {
-          appendAuditLog(`Execution completed without duplicate issue.`, "text-slate-300");
-        }
-
       } else {
         // Mutex Protected Thread Execution
         const t1 = executeMutexThread('u1', 'User 1 (Alice)', book1, delayMs, results);
@@ -744,19 +793,183 @@
         })();
 
         await Promise.all([t1, t2]);
-
-        if (book1.id === book2.id && book1.totalCopies === 1) {
-          const winner = results.u1 === 'SUCCESS' ? 'User 1 (Alice)' : 'User 2 (Bob)';
-          document.getElementById('safe-winner-name').innerText = winner;
-          document.getElementById('alert-banner-safe').classList.remove('hidden');
-          appendAuditLog(`🛡️ MUTEX PROTECTION SUCCEEDED! Exactly 1 user (${winner}) acquired the book. Mutual exclusion guaranteed.`, "text-emerald-400 font-bold");
-        }
       }
+
+      // Display the crystal-clear Allocation Decision & Why explanation
+      renderAllocationDecision(results, book1, book2);
 
       renderCatalogs();
       simConfig.isSimulationRunning = false;
-      document.getElementById('sim-prompt-text').innerText = "Simulation finished! Click 'Reset' to test again or choose other books.";
+      document.getElementById('sim-prompt-text').innerText = "Simulation finished! Inspect the allocation verdict above.";
       document.getElementById('sim-prompt-text').className = "text-slate-300 font-semibold";
+    }
+
+    function renderAllocationDecision(results, book1, book2) {
+      const board = document.getElementById('allocation-decision-board');
+      const recipientEl = document.getElementById('decision-recipient');
+      const bookEl = document.getElementById('decision-book');
+      const reasonSummaryEl = document.getElementById('decision-reason-summary');
+      const badgeEl = document.getElementById('decision-badge');
+      const highlightEl = document.getElementById('decision-highlight');
+      const iconEl = document.getElementById('decision-icon');
+
+      const u1Box = document.getElementById('u1-verdict-box');
+      const u1Status = document.getElementById('u1-verdict-status');
+      const u1Badge = document.getElementById('u1-verdict-badge');
+      const u1Why = document.getElementById('u1-verdict-why');
+
+      const u2Box = document.getElementById('u2-verdict-box');
+      const u2Status = document.getElementById('u2-verdict-status');
+      const u2Badge = document.getElementById('u2-verdict-badge');
+      const u2Why = document.getElementById('u2-verdict-why');
+
+      const whyU1Badge = document.getElementById('why-u1-badge');
+      const whyU1Title = document.getElementById('why-u1-title');
+      const whyU1Text = document.getElementById('why-u1-text');
+
+      const whyU2Badge = document.getElementById('why-u2-badge');
+      const whyU2Title = document.getElementById('why-u2-title');
+      const whyU2Text = document.getElementById('why-u2-text');
+
+      board.classList.remove('hidden');
+      u1Box.classList.remove('hidden');
+      u2Box.classList.remove('hidden');
+
+      const isSameBook = (book1.id === book2.id);
+
+      if (isSameBook && book1.totalCopies === 1) {
+        if (!simConfig.isMutexActive) {
+          // Unsafe race condition: Both got the book!
+          iconEl.innerText = "💥";
+          board.className = "rounded-2xl p-5 border border-rose-600/70 bg-rose-950/40 shadow-2xl transition-all duration-300 space-y-4 race-alert";
+          badgeEl.className = "px-3 py-1 rounded-full text-xs font-bold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40";
+          badgeEl.innerText = "CRITICAL: RACE CONDITION DETECTED";
+
+          highlightEl.className = "p-4 rounded-xl border border-rose-600/60 bg-rose-900/30 flex flex-col md:flex-row md:items-center justify-between gap-4";
+          recipientEl.innerHTML = `<span class="text-rose-400">⚠️ BOTH User 1 (Alice) &amp; User 2 (Bob)</span>`;
+          bookEl.innerText = `Book: "${book1.title}" (Original Inventory: 1 Physical Copy)`;
+
+          reasonSummaryEl.innerHTML = `<strong>Why did both users receive the book?</strong><br>Because <em>Mutual Exclusion was disabled (No Mutex)</em>. User 1 checked availability and found 1 copy. During User 1's barcode scan delay, User 2 <strong>also</strong> checked the catalog and read the stale state (<code class="text-amber-300">available_copies = 1</code>). Both threads proceeded to issue the book and decremented the count, leaving the library with 2 borrowers for 1 single physical copy!`;
+
+          // User 1
+          u1Box.className = "rounded-xl p-4 border border-rose-500/50 bg-rose-950/40 text-rose-200 space-y-2";
+          u1Badge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-rose-900/80 text-rose-200 border border-rose-700";
+          u1Badge.innerText = "DUPLICATE ISSUED (UNSAFE)";
+          u1Status.innerHTML = `<span class="text-rose-400">⚠️ Book Issued (Over-Allocation)</span>`;
+          u1Why.innerHTML = `User 1 inspected the catalog and found <code class="text-amber-300">1 copy available</code>. Because no Mutex lock was held, User 2 accessed the catalog simultaneously during User 1's scan delay. Both succeeded unsafely.`;
+
+          whyU1Badge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-rose-900/80 text-rose-200";
+          whyU1Badge.innerText = "UNSAFE OVER-ISSUE";
+          whyU1Title.innerText = "User 1 (Alice): Received Book (Corrupted State)";
+          whyU1Text.innerText = "Alice read available_copies = 1. Before Alice could decrement it, Bob also read 1. Both were granted the single physical copy.";
+
+          // User 2
+          u2Box.className = "rounded-xl p-4 border border-rose-500/50 bg-rose-950/40 text-rose-200 space-y-2";
+          u2Badge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-rose-900/80 text-rose-200 border border-rose-700";
+          u2Badge.innerText = "DUPLICATE ISSUED (UNSAFE)";
+          u2Status.innerHTML = `<span class="text-rose-400">⚠️ Book Issued (Over-Allocation)</span>`;
+          u2Why.innerHTML = `User 2 checked the catalog while User 1 was still in the middle of checkout. User 2 read stale data (<code class="text-amber-300">1 copy available</code>) because no lock blocked User 2. Both users took the same physical book!`;
+
+          whyU2Badge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-rose-900/80 text-rose-200";
+          whyU2Badge.innerText = "UNSAFE OVER-ISSUE";
+          whyU2Title.innerText = "User 2 (Bob): Received Book (Corrupted State)";
+          whyU2Text.innerText = "Bob intercepted the catalog before Alice's write completed, reading stale available_copies = 1 and writing a second duplicate checkout.";
+
+        } else {
+          // Safe Mutex Protection: Exactly 1 winner!
+          const winnerId = results.u1 === 'SUCCESS' ? 'u1' : 'u2';
+          const winnerName = winnerId === 'u1' ? 'User 1 (Alice)' : 'User 2 (Bob)';
+          const loserId = winnerId === 'u1' ? 'u2' : 'u1';
+          const loserName = winnerId === 'u1' ? 'User 2 (Bob)' : 'User 1 (Alice)';
+
+          iconEl.innerText = "🛡️";
+          board.className = "rounded-2xl p-5 border border-emerald-500/50 bg-emerald-950/30 shadow-2xl transition-all duration-300 space-y-4 safe-glow";
+          badgeEl.className = "px-3 py-1 rounded-full text-xs font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+          badgeEl.innerText = "MUTUAL EXCLUSION ENFORCED (SAFE)";
+
+          highlightEl.className = "p-4 rounded-xl border border-emerald-500/50 bg-emerald-900/20 flex flex-col md:flex-row md:items-center justify-between gap-4";
+          recipientEl.innerHTML = `<span class="text-emerald-400">🎉 ${winnerName}</span>`;
+          bookEl.innerText = `Book: "${book1.title}" (Single Physical Copy Successfully Allocated)`;
+
+          reasonSummaryEl.innerHTML = `<strong>Why was the book issued to ${winnerName}?</strong><br>${winnerName}'s thread called <code class="text-emerald-300">library_lock.acquire()</code> first and took exclusive lock ownership. While holding the lock, ${winnerName} verified <code class="text-cyan-300">available_copies = 1</code> and decremented it to <code class="text-emerald-300">0</code>. ${loserName} had to wait in the blocked queue. When ${loserName} subsequently entered the critical section, zero copies remained, so ${loserName} was safely rejected.`;
+
+          // Winner UI
+          const winnerBox = winnerId === 'u1' ? u1Box : u2Box;
+          const winnerBadge = winnerId === 'u1' ? u1Badge : u2Badge;
+          const winnerStatus = winnerId === 'u1' ? u1Status : u2Status;
+          const winnerWhy = winnerId === 'u1' ? u1Why : u2Why;
+          const winnerWhyBadge = winnerId === 'u1' ? whyU1Badge : whyU2Badge;
+          const winnerWhyTitle = winnerId === 'u1' ? whyU1Title : whyU2Title;
+          const winnerWhyText = winnerId === 'u1' ? whyU1Text : whyU2Text;
+
+          winnerBox.className = "rounded-xl p-4 border border-emerald-500/50 bg-emerald-950/40 text-emerald-200 space-y-2";
+          winnerBadge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+          winnerBadge.innerText = "BOOK ISSUED ✓";
+          winnerStatus.innerHTML = `<span class="text-emerald-400">🎉 Book Confirmed to ${winnerName}</span>`;
+          winnerWhy.innerHTML = `<strong>Acquired Mutex First:</strong> ${winnerName}'s thread was scheduled first and locked the critical section. It read <code class="text-cyan-300">available_copies = 1</code>, performed barcode verification, and decremented the inventory to 0 before releasing the lock.`;
+
+          winnerWhyBadge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300";
+          winnerWhyBadge.innerText = "SUCCESS (LOCK WINNER)";
+          winnerWhyTitle.innerText = `${winnerName}: Book Successfully Issued`;
+          winnerWhyText.innerText = `${winnerName} held the mutex lock, entered the critical section while 1 copy was free, decremented inventory, and completed checkout.`;
+
+          // Loser UI
+          const loserBox = loserId === 'u1' ? u1Box : u2Box;
+          const loserBadge = loserId === 'u1' ? u1Badge : u2Badge;
+          const loserStatus = loserId === 'u1' ? u1Status : u2Status;
+          const loserWhy = loserId === 'u1' ? u1Why : u2Why;
+          const loserWhyBadge = loserId === 'u1' ? whyU1Badge : whyU2Badge;
+          const loserWhyTitle = loserId === 'u1' ? whyU1Title : whyU2Title;
+          const loserWhyText = loserId === 'u1' ? whyU1Text : whyU2Text;
+
+          loserBox.className = "rounded-xl p-4 border border-rose-500/50 bg-rose-950/40 text-rose-200 space-y-2";
+          loserBadge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40";
+          loserBadge.innerText = "REJECTED (0 COPIES)";
+          loserStatus.innerHTML = `<span class="text-rose-400">❌ Request Rejected</span>`;
+          loserWhy.innerHTML = `<strong>Blocked by Mutex:</strong> ${loserName} had to wait while ${winnerName} held the lock. When the lock was handed over, ${loserName} entered the critical section and checked availability, seeing <code class="text-rose-300">available_copies = 0</code>. ${loserName} was safely turned away to prevent duplicate issue.`;
+
+          loserWhyBadge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-rose-500/20 text-rose-300";
+          loserWhyBadge.innerText = "SAFELY REJECTED";
+          loserWhyTitle.innerText = `${loserName}: Request Safely Denied`;
+          loserWhyText.innerText = `${loserName} was queued behind the lock. After lock release, inventory was 0; mutual exclusion protected the library from double-booking.`;
+        }
+      } else {
+        // Different books or multiple copies
+        iconEl.innerText = "✅";
+        board.className = "rounded-2xl p-5 border border-cyan-500/50 bg-cyan-950/30 shadow-2xl transition-all duration-300 space-y-4";
+        badgeEl.className = "px-3 py-1 rounded-full text-xs font-bold font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/40";
+        badgeEl.innerText = "CONCURRENT CHECKOUT SUCCESS";
+
+        highlightEl.className = "p-4 rounded-xl border border-cyan-500/50 bg-cyan-900/20 flex flex-col md:flex-row md:items-center justify-between gap-4";
+        recipientEl.innerHTML = `<span class="text-cyan-400">✅ Books Issued to BOTH Users</span>`;
+        bookEl.innerText = `User 1 got "${book1.title}" • User 2 got "${book2.title}"`;
+
+        reasonSummaryEl.innerHTML = `<strong>Why did both succeed?</strong><br>User 1 and User 2 requested either different books or books with multiple available copies. Because there was no resource exhaustion or conflicting critical section write, both transactions executed safely!`;
+
+        // User 1
+        u1Box.className = "rounded-xl p-4 border border-emerald-500/50 bg-emerald-950/40 text-emerald-200 space-y-2";
+        u1Badge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-500/20 text-emerald-300";
+        u1Badge.innerText = "BOOK ISSUED ✓";
+        u1Status.innerHTML = `<span class="text-emerald-400">🎉 Book Confirmed: ${book1.title}</span>`;
+        u1Why.innerHTML = `User 1 checked availability for "${book1.title}" and found copies in stock. Checkout was approved.`;
+
+        whyU1Badge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300";
+        whyU1Badge.innerText = "ISSUED";
+        whyU1Title.innerText = `User 1 (Alice): Got "${book1.title}"`;
+        whyU1Text.innerText = `Requested book had available copies. Processed successfully without conflict.`;
+
+        // User 2
+        u2Box.className = "rounded-xl p-4 border border-emerald-500/50 bg-emerald-950/40 text-emerald-200 space-y-2";
+        u2Badge.className = "px-2.5 py-0.5 rounded text-[11px] font-bold font-mono bg-emerald-500/20 text-emerald-300";
+        u2Badge.innerText = "BOOK ISSUED ✓";
+        u2Status.innerHTML = `<span class="text-emerald-400">🎉 Book Confirmed: ${book2.title}</span>`;
+        u2Why.innerHTML = `User 2 checked availability for "${book2.title}" and found copies in stock. Checkout was approved.`;
+
+        whyU2Badge.className = "font-mono text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300";
+        whyU2Badge.innerText = "ISSUED";
+        whyU2Title.innerText = `User 2 (Bob): Got "${book2.title}"`;
+        whyU2Text.innerText = `Requested book had available copies. Processed successfully without conflict.`;
+      }
     }
 
     async function executeUnsafeThread(userId, userName, book, delayMs, results) {
@@ -886,8 +1099,12 @@
       simConfig.isSimulationRunning = false;
 
       updateMutexUI(null);
-      document.getElementById('alert-banner-race').classList.add('hidden');
-      document.getElementById('alert-banner-safe').classList.add('hidden');
+      const board = document.getElementById('allocation-decision-board');
+      if (board) board.classList.add('hidden');
+      const u1v = document.getElementById('u1-verdict-box');
+      if (u1v) u1v.classList.add('hidden');
+      const u2v = document.getElementById('u2-verdict-box');
+      if (u2v) u2v.classList.add('hidden');
 
       ['u1', 'u2'].forEach(u => {
         document.getElementById(`${u}-search-input`).value = '';
